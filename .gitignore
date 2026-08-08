@@ -1,0 +1,32 @@
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Python cache and builds
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+backend/.env
+frontend/.env.local
+
+# Databases & local uploads
+*.db
+backend/uploads/
+uploads/
+backend/data/
+data/
