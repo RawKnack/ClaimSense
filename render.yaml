@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: claimsense-backend
+    env: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: claimsense-db
+          property: connectionString
+      - key: UPLOAD_DIR
+        value: uploads
+      - key: DEBUG
+        value: "false"
+      - key: OPENAI_API_KEY
+        sync: false
+
+databases:
+  - name: claimsense-db
+    plan: free
+    postgresMajorVersion: "16"
