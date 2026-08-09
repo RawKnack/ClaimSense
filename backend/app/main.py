@@ -41,6 +41,10 @@ async def lifespan(app: FastAPI):
     if has_pgvector:
         from app.db.database import SessionLocal
         db = SessionLocal()
+        import sys
+        import os
+        sys.stderr.write(f"--- STARTING SEEDING --- EMBEDDING_MODE: {os.environ.get('EMBEDDING_MODE')}\n")
+        sys.stderr.flush()
         try:
             seed_policy_embeddings(db)
         except Exception as err:
