@@ -15,35 +15,26 @@ FastAPI gateway with deterministic rule engine, LLM-powered adjudication, and Po
 | Policy RAG | Keyword retrieval over policy + rules |
 | Frontend | `../frontend` (Next.js) |
 
-## Quick start (SQLite — no Docker)
+## Quick Start (with Docker Compose)
+
+```powershell
+# From project root
+docker compose up --build -d
+```
+
+Once running, the backend API will be available at http://localhost:8000. Open the interactive API documentation at http://localhost:8000/docs.
+
+## Manual Setup (without Docker Compose but with Postgres)
+
+1. Ensure a PostgreSQL instance is running with the `pgvector` extension.
+2. Configure your environment variables by copying `.env.example` to `.env` and setting `DATABASE_URL` appropriately.
+3. Install dependencies and start the application:
 
 ```powershell
 cd backend
 pip install -r requirements.txt
-# Optional: copy .env.example .env — defaults to SQLite
-
 uvicorn app.main:app --reload --app-dir .
 ```
-
-The API creates `backend/data/claimsense.db` on first start. Open http://127.0.0.1:8000/docs
-
-Claims run **synchronously** if Redis is not running (Celery fallback).
-
-## Postgres + Redis (optional, for pgvector / Celery)
-
-```powershell
-# From project root
-docker compose up -d
-
-cd backend
-copy .env.example .env
-# Edit .env: uncomment the Postgres DATABASE_URL line
-
-uvicorn app.main:app --reload --app-dir .
-celery -A app.workers.celery_app worker --loglevel=info --pool=solo
-```
-
-API docs: http://localhost:8000/docs
 
 ## Submit a claim (structured JSON for testing)
 
@@ -70,7 +61,6 @@ python scripts/run_test_cases.py
 | Variable | Default |
 |----------|---------|
 | `DATABASE_URL` | `postgresql+psycopg2://claimsense:claimsense@localhost:5433/claimsense_db` |
-| `REDIS_URL` | `redis://localhost:6379/0` |
 | `UPLOAD_DIR` | `uploads` |
 
 Policy files are read from the project root (`policy_terms.json`, `adjudication_rules.md`).

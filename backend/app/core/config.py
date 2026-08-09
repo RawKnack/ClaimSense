@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     debug: bool = False
 
-    # SQLite works without Docker; set DATABASE_URL in .env for Postgres + pgvector
+    # Set DATABASE_URL in .env for Postgres + pgvector
     database_url: str = "postgresql+psycopg2://claimsense:claimsense@localhost:5433/claimsense_db"
     upload_dir: Path = Path("uploads")
     max_upload_size_mb: int = 10
