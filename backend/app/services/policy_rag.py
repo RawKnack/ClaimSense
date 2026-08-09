@@ -120,21 +120,25 @@ class GeminiEmbeddingModel:
 
     def encode(self, text: str) -> list[float]:
         import httpx
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={self.api_key}"
-        try:
-            logger.info("Calling Google Gemini Embedding API for text-embedding-004...")
-            response = httpx.post(
-                url,
-                json={"content": {"parts": [{"text": text}]}},
-                timeout=15.0
-            )
-            if response.status_code == 200:
-                return response.json()["embedding"]["values"]
-            logger.warning("Gemini Embedding API failed with status %d: %s", response.status_code, response.text)
-        except Exception as exc:
-            logger.warning("Gemini Embedding API call failed: %s", exc)
+        candidate_models = ["embedding-001", "text-embedding-004", "gemini-embedding-001"]
+        for model_name in candidate_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:embedContent?key={self.api_key}"
+            try:
+                logger.info("Trying Gemini Embedding model: %s...", model_name)
+                response = httpx.post(
+                    url,
+                    json={"content": {"parts": [{"text": text}]}},
+                    timeout=15.0
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if "embedding" in data and "values" in data["embedding"]:
+                        return data["embedding"]["values"]
+                logger.warning("Gemini Embedding API (%s) returned status %d: %s", model_name, response.status_code, response.text)
+            except Exception as exc:
+                logger.warning("Gemini Embedding API (%s) call failed: %s", model_name, exc)
         
-        raise RuntimeError("Failed to generate embedding via Gemini API")
+        raise RuntimeError("Failed to generate embedding via Gemini API across all candidate models")
 
 
 @lru_cache
