@@ -33,6 +33,21 @@ async def lifespan(app: FastAPI):
         except Exception as err:
             logger.warning("Failed to remove PolicyEmbedding table from metadata: %s", err)
 
+    if has_pgvector:
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(engine)
+            if "policy_embeddings" in inspector.get_table_names():
+                columns = inspector.get_columns("policy_embeddings")
+                for col in columns:
+                    if col["name"] == "embedding" and "384" in str(col["type"]):
+                        logger.info("Found outdated 384-dimensional policy_embeddings table. Dropping for 768-dimensional model recreation...")
+                        with engine.begin() as conn:
+                            conn.execute(text("DROP TABLE IF EXISTS policy_embeddings CASCADE"))
+                        break
+        except Exception as inspect_err:
+            logger.warning("Failed to check/drop outdated policy_embeddings table: %s", inspect_err)
+
     Base.metadata.create_all(bind=engine)
     from app.services.policy_rag import load_policy_chunks, seed_policy_embeddings
 

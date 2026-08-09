@@ -114,52 +114,60 @@ def seed_policy_embeddings(db: Session) -> None:
         logger.warning("Failed to seed policy embeddings: %s", exc)
 
 
-class RemoteEmbeddingModel:
+class GeminiEmbeddingModel:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
     def encode(self, text: str) -> list[float]:
         import httpx
-        url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
-        headers = {}
-        hf_token = os.environ.get("HF_TOKEN")
-        if hf_token:
-            headers["Authorization"] = f"Bearer {hf_token}"
-        
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={self.api_key}"
         try:
-            logger.info("Calling Hugging Face Inference API for all-MiniLM-L6-v2...")
+            logger.info("Calling Google Gemini Embedding API for text-embedding-004...")
             response = httpx.post(
                 url,
-                headers=headers,
-                json={"inputs": text, "options": {"wait_for_model": True}},
+                json={"content": {"parts": [{"text": text}]}},
                 timeout=15.0
             )
             if response.status_code == 200:
-                result = response.json()
-                if isinstance(result, list) and len(result) > 0:
-                    if isinstance(result[0], list):
-                        return result[0]
-                    return result
-            logger.warning("Hugging Face Inference API failed with status %d: %s", response.status_code, response.text)
+                return response.json()["embedding"]["values"]
+            logger.warning("Gemini Embedding API failed with status %d: %s", response.status_code, response.text)
         except Exception as exc:
-            logger.warning("Hugging Face Inference API call failed: %s", exc)
+            logger.warning("Gemini Embedding API call failed: %s", exc)
         
-        raise RuntimeError("Failed to generate embedding via Hugging Face API")
+        raise RuntimeError("Failed to generate embedding via Gemini API")
 
 
 @lru_cache
 def get_embedding_model():
     import sys
-    mode = os.environ.get("EMBEDDING_MODE", "local").lower()
+    mode = os.environ.get("EMBEDDING_MODE", "gemini").lower()
     sys.stderr.write(f"--- get_embedding_model: mode={mode} ---\n")
     sys.stderr.flush()
-    if mode == "remote":
-        sys.stderr.write("--- Using RemoteEmbeddingModel ---\n")
-        sys.stderr.flush()
-        return RemoteEmbeddingModel()
     
-    sys.stderr.write("--- Loading SentenceTransformer locally (this will consume heavy RAM!) ---\n")
+    if mode == "gemini":
+        settings = get_settings()
+        api_key = settings.gemini_api_key or settings.openai_api_key
+        if api_key and api_key.strip():
+            sys.stderr.write("--- Using GeminiEmbeddingModel ---\n")
+            sys.stderr.flush()
+            return GeminiEmbeddingModel(api_key.strip())
+        else:
+            sys.stderr.write("--- Gemini API key missing, falling back to local mode ---\n")
+            sys.stderr.flush()
+            mode = "local"
+            
+    if mode == "remote":
+        # Keep old remote name mapping for backward compatibility if they have it set
+        settings = get_settings()
+        api_key = settings.gemini_api_key or settings.openai_api_key
+        if api_key and api_key.strip():
+            return GeminiEmbeddingModel(api_key.strip())
+    
+    sys.stderr.write("--- Loading SentenceTransformer locally (all-mpnet-base-v2, 768 dimensions) ---\n")
     sys.stderr.flush()
     from sentence_transformers import SentenceTransformer
-    logger.info("Loading SentenceTransformer('all-MiniLM-L6-v2') locally...")
-    return SentenceTransformer("all-MiniLM-L6-v2")
+    logger.info("Loading SentenceTransformer('all-mpnet-base-v2') locally...")
+    return SentenceTransformer("all-mpnet-base-v2")
 
 
 def retrieve_policy_context(
