@@ -114,55 +114,94 @@ def seed_policy_embeddings(db: Session) -> None:
         logger.warning("Failed to seed policy embeddings: %s", exc)
 
 
-class GeminiEmbeddingModel:
+class UnifiedEmbeddingModel:
     def __init__(self, api_key: str):
         self.api_key = api_key
 
     def encode(self, text: str) -> list[float]:
         import httpx
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/embedding-001:embedContent?key={self.api_key}"
-        try:
-            response = httpx.post(
-                url,
-                json={"content": {"parts": [{"text": text}]}},
-                timeout=15.0
-            )
-            if response.status_code == 200:
-                data = response.json()
-                if "embedding" in data and "values" in data["embedding"]:
-                    return data["embedding"]["values"]
-            logger.warning("Gemini Embedding API returned status %d: %s", response.status_code, response.text)
-        except Exception as exc:
-            logger.warning("Gemini Embedding API call failed: %s", exc)
+        key = self.api_key.strip()
         
-        raise RuntimeError("Failed to generate embedding via Gemini API (embedding-001)")
+        # Case 1: OpenRouter key (starts with sk-or-v1-)
+        if key.startswith("sk-or-v1-"):
+            logger.info("Calling OpenRouter Embedding API (openai/text-embedding-3-small)...")
+            url = "https://openrouter.ai/api/v1/embeddings"
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "openai/text-embedding-3-small",
+                "input": text,
+                "dimensions": 768
+            }
+            try:
+                response = httpx.post(url, headers=headers, json=payload, timeout=15.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    if "data" in data and len(data["data"]) > 0:
+                        return data["data"][0]["embedding"]
+                logger.warning("OpenRouter Embedding API returned status %d: %s", response.status_code, response.text)
+            except Exception as exc:
+                logger.warning("OpenRouter Embedding API call failed: %s", exc)
+
+        # Case 2: Standard OpenAI key (starts with sk-)
+        elif key.startswith("sk-"):
+            logger.info("Calling OpenAI Embedding API (text-embedding-3-small)...")
+            url = "https://api.openai.com/v1/embeddings"
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": "text-embedding-3-small",
+                "input": text,
+                "dimensions": 768
+            }
+            try:
+                response = httpx.post(url, headers=headers, json=payload, timeout=15.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    if "data" in data and len(data["data"]) > 0:
+                        return data["data"][0]["embedding"]
+                logger.warning("OpenAI Embedding API returned status %d: %s", response.status_code, response.text)
+            except Exception as exc:
+                logger.warning("OpenAI Embedding API call failed: %s", exc)
+
+        # Case 3: Google Gemini key
+        else:
+            logger.info("Calling Google Gemini Embedding API (embedding-001)...")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/embedding-001:embedContent?key={key}"
+            try:
+                response = httpx.post(
+                    url,
+                    json={"content": {"parts": [{"text": text}]}},
+                    timeout=15.0
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if "embedding" in data and "values" in data["embedding"]:
+                        return data["embedding"]["values"]
+                logger.warning("Gemini Embedding API returned status %d: %s", response.status_code, response.text)
+            except Exception as exc:
+                logger.warning("Gemini Embedding API call failed: %s", exc)
+        
+        raise RuntimeError("Failed to generate embedding via API")
 
 
 @lru_cache
 def get_embedding_model():
     import sys
-    mode = os.environ.get("EMBEDDING_MODE", "gemini").lower()
+    mode = os.environ.get("EMBEDDING_MODE", "unified").lower()
     sys.stderr.write(f"--- get_embedding_model: mode={mode} ---\n")
     sys.stderr.flush()
     
-    if mode == "gemini":
-        settings = get_settings()
-        api_key = settings.gemini_api_key or settings.openai_api_key
-        if api_key and api_key.strip():
-            sys.stderr.write("--- Using GeminiEmbeddingModel ---\n")
-            sys.stderr.flush()
-            return GeminiEmbeddingModel(api_key.strip())
-        else:
-            sys.stderr.write("--- Gemini API key missing, falling back to local mode ---\n")
-            sys.stderr.flush()
-            mode = "local"
-            
-    if mode == "remote":
-        # Keep old remote name mapping for backward compatibility if they have it set
-        settings = get_settings()
-        api_key = settings.gemini_api_key or settings.openai_api_key
-        if api_key and api_key.strip():
-            return GeminiEmbeddingModel(api_key.strip())
+    settings = get_settings()
+    api_key = settings.openai_api_key or settings.gemini_api_key
+    if api_key and api_key.strip():
+        sys.stderr.write("--- Using UnifiedEmbeddingModel ---\n")
+        sys.stderr.flush()
+        return UnifiedEmbeddingModel(api_key.strip())
     
     sys.stderr.write("--- Loading SentenceTransformer locally (all-mpnet-base-v2, 768 dimensions) ---\n")
     sys.stderr.flush()
