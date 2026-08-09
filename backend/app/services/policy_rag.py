@@ -180,6 +180,15 @@ def retrieve_policy_context(
             inspector = inspect(db.bind)
             if inspector.has_table("policy_embeddings"):
                 from app.db.models import PolicyEmbedding
+                
+                # Self-healing: Seed on first search request since internet is blocked during startup scan
+                try:
+                    if db.query(PolicyEmbedding).count() == 0:
+                        logger.info("Embeddings table is empty. Running on-demand seeding...")
+                        seed_policy_embeddings(db)
+                except Exception as seed_err:
+                    logger.warning("On-demand seeding check failed: %s", seed_err)
+
                 model = get_embedding_model()
                 query_vector = model.encode(query_text)
                 if hasattr(query_vector, "tolist"):
