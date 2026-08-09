@@ -146,11 +146,17 @@ class RemoteEmbeddingModel:
 
 @lru_cache
 def get_embedding_model():
+    import sys
     mode = os.environ.get("EMBEDDING_MODE", "local").lower()
+    sys.stderr.write(f"--- get_embedding_model: mode={mode} ---\n")
+    sys.stderr.flush()
     if mode == "remote":
-        logger.info("Using RemoteEmbeddingModel (Hugging Face Inference API)...")
+        sys.stderr.write("--- Using RemoteEmbeddingModel ---\n")
+        sys.stderr.flush()
         return RemoteEmbeddingModel()
     
+    sys.stderr.write("--- Loading SentenceTransformer locally (this will consume heavy RAM!) ---\n")
+    sys.stderr.flush()
     from sentence_transformers import SentenceTransformer
     logger.info("Loading SentenceTransformer('all-MiniLM-L6-v2') locally...")
     return SentenceTransformer("all-MiniLM-L6-v2")
