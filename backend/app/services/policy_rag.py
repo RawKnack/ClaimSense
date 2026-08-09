@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -69,6 +70,10 @@ def load_policy_chunks() -> list[PolicyChunk]:
 
 def seed_policy_embeddings(db: Session) -> None:
     """Generate and store vector embeddings for all policy chunks in PostgreSQL."""
+    if os.environ.get("DISABLE_EMBEDDINGS", "").lower() == "true":
+        logger.info("Semantic embeddings are disabled via DISABLE_EMBEDDINGS. Skipping seeding.")
+        return
+
     try:
         from app.db.models import PolicyEmbedding
         chunks = load_policy_chunks()
@@ -126,7 +131,7 @@ def retrieve_policy_context(
         return []
 
     # Try vector similarity retrieval using pgvector in PostgreSQL
-    if db is not None:
+    if db is not None and os.environ.get("DISABLE_EMBEDDINGS", "").lower() != "true":
         try:
             from sqlalchemy import inspect
             inspector = inspect(db.bind)
