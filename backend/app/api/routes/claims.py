@@ -299,7 +299,7 @@ def adjudicate_sync(
     claim_id: uuid.UUID,
     db: Session = Depends(get_db),
 ) -> DecisionOutputSchema:
-    """Synchronous adjudication for local testing without Celery."""
+    """Synchronous adjudication for local testing."""
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")

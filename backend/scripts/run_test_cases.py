@@ -1,4 +1,4 @@
-"""Run test_cases.json against the rule engine (no HTTP/Celery required)."""
+"""Run test_cases.json against the rule engine (no HTTP server required)."""
 
 import json
 import sys

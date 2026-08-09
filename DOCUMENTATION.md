@@ -788,7 +788,7 @@ The system is designed to handle all 10 test cases from `test_cases.json`:
 19. **Free Tier Limitations:** Render's free tier spins down web services after 15 minutes of inactivity. The first request after idle may take ~50 seconds as the container cold-starts
 20. **No File Persistence on Free Tier:** Uploaded files are stored on the ephemeral container filesystem. On Render's free tier, files may be lost on container restart. For production, S3-compatible storage (configurable via `USE_S3` setting) should be enabled
 21. **pgvector Availability:** The `pgvector` extension is required for semantic policy retrieval. If unavailable, the system gracefully removes the `PolicyEmbedding` table and falls back to keyword-overlap retrieval
-22. **No Celery/Redis:** Background processing uses synchronous in-request execution (the `process_claim` function runs inline). In a production system, this would be replaced by a Celery + Redis task queue for true asynchronous processing
+22. **Synchronous Execution:** Background processing uses synchronous execution (the processing function runs inline) to keep local setup simple.
 
 ---
 
