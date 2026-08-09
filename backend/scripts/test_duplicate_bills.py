@@ -23,7 +23,7 @@ def run_verification():
         except Exception:
             pass
 
-    print("Initializing verification SQLite database...")
+    print("Initializing verification database...")
     db_url = "sqlite:///./verification_temp.db"
     engine = create_engine(db_url)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
