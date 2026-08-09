@@ -70,8 +70,8 @@ def load_policy_chunks() -> list[PolicyChunk]:
 
 def seed_policy_embeddings(db: Session) -> None:
     """Generate and store vector embeddings for all policy chunks in PostgreSQL."""
-    if os.environ.get("DISABLE_EMBEDDINGS", "").lower() == "true":
-        logger.info("Semantic embeddings are disabled via DISABLE_EMBEDDINGS. Skipping seeding.")
+    if os.environ.get("DISABLE_EMBEDDINGS", "").lower() == "true" or os.environ.get("EMBEDDING_MODE", "").lower() == "disabled":
+        logger.info("Semantic embeddings are disabled. Skipping seeding.")
         return
 
     try:
@@ -89,10 +89,12 @@ def seed_policy_embeddings(db: Session) -> None:
         for chunk in chunks:
             if chunk.chunk_id not in existing_ids:
                 if model is None:
-                    logger.info("Initializing SentenceTransformer model for seeding...")
+                    logger.info("Initializing embedding model for seeding...")
                     model = get_embedding_model()
                 logger.info("Embedding chunk %s...", chunk.chunk_id)
-                vector = model.encode(chunk.text).tolist()
+                vector = model.encode(chunk.text)
+                if hasattr(vector, "tolist"):
+                    vector = vector.tolist()
                 to_insert.append(
                     PolicyEmbedding(
                         chunk_id=chunk.chunk_id,
@@ -112,10 +114,45 @@ def seed_policy_embeddings(db: Session) -> None:
         logger.warning("Failed to seed policy embeddings: %s", exc)
 
 
+class RemoteEmbeddingModel:
+    def encode(self, text: str) -> list[float]:
+        import httpx
+        url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+        headers = {}
+        hf_token = os.environ.get("HF_TOKEN")
+        if hf_token:
+            headers["Authorization"] = f"Bearer {hf_token}"
+        
+        try:
+            logger.info("Calling Hugging Face Inference API for all-MiniLM-L6-v2...")
+            response = httpx.post(
+                url,
+                headers=headers,
+                json={"inputs": text, "options": {"wait_for_model": True}},
+                timeout=15.0
+            )
+            if response.status_code == 200:
+                result = response.json()
+                if isinstance(result, list) and len(result) > 0:
+                    if isinstance(result[0], list):
+                        return result[0]
+                    return result
+            logger.warning("Hugging Face Inference API failed with status %d: %s", response.status_code, response.text)
+        except Exception as exc:
+            logger.warning("Hugging Face Inference API call failed: %s", exc)
+        
+        raise RuntimeError("Failed to generate embedding via Hugging Face API")
+
+
 @lru_cache
 def get_embedding_model():
+    mode = os.environ.get("EMBEDDING_MODE", "local").lower()
+    if mode == "remote":
+        logger.info("Using RemoteEmbeddingModel (Hugging Face Inference API)...")
+        return RemoteEmbeddingModel()
+    
     from sentence_transformers import SentenceTransformer
-    logger.info("Loading SentenceTransformer('all-MiniLM-L6-v2')...")
+    logger.info("Loading SentenceTransformer('all-MiniLM-L6-v2') locally...")
     return SentenceTransformer("all-MiniLM-L6-v2")
 
 
@@ -131,14 +168,16 @@ def retrieve_policy_context(
         return []
 
     # Try vector similarity retrieval using pgvector in PostgreSQL
-    if db is not None and os.environ.get("DISABLE_EMBEDDINGS", "").lower() != "true":
+    if db is not None and os.environ.get("DISABLE_EMBEDDINGS", "").lower() != "true" and os.environ.get("EMBEDDING_MODE", "").lower() != "disabled":
         try:
             from sqlalchemy import inspect
             inspector = inspect(db.bind)
             if inspector.has_table("policy_embeddings"):
                 from app.db.models import PolicyEmbedding
                 model = get_embedding_model()
-                query_vector = model.encode(query_text).tolist()
+                query_vector = model.encode(query_text)
+                if hasattr(query_vector, "tolist"):
+                    query_vector = query_vector.tolist()
                 
                 # Query top_k nearest neighbors by cosine distance
                 results = (
