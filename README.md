@@ -12,8 +12,8 @@
 ## 🎥 Live Application & Demo
 - **Demo Video (YouTube):** [https://youtu.be/gW0DLJk8smc](https://youtu.be/gW0DLJk8smc) (Links to frontend, backend, and GitHub are also in the YouTube description)
 - **Frontend (Vercel):** *(deploy and update URL)*
-- **Backend API (Render):** *(deploy and update URL)*
-- **GitHub Repository:** *(update with your repo URL)*
+- **Backend API (Render):** [https://claimsense-deeg.onrender.com](https://claimsense-deeg.onrender.com)
+- **GitHub Repository:** [https://github.com/RawKnack/ClaimSense](https://github.com/RawKnack/ClaimSense)
 ---
 
 ## 📖 Table of Contents
