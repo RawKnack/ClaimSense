@@ -153,7 +153,12 @@ def ocr_file(file_path: str | Path, settings: Settings | None = None) -> dict[st
                 p["page"] = idx
             full_text = "\n\n".join(p["text"] for p in direct_pages if p.get("text"))
             avg_conf = sum(p["confidence"] for p in direct_pages) / len(direct_pages)
-            return {"pages": direct_pages, "full_text": full_text, "avg_confidence": avg_conf}
+            return {
+                "source_file": str(path),
+                "pages": direct_pages,
+                "full_text": full_text,
+                "confidence": round(avg_conf, 3),
+            }
 
     # Slow path: rasterize + Tesseract OCR (for scanned PDFs / images)
     images = _load_image(path)
