@@ -50,82 +50,18 @@ def get_settings() -> Settings:
 
 
 def get_llm_client_and_model(settings: Settings):
-    """Dynamically resolves OpenAI-compatible client and model based on API keys."""
-    keys = {}
-    if settings.gemini_api_key and settings.gemini_api_key.strip():
-        keys["gemini"] = settings.gemini_api_key.strip()
-    if settings.google_vision_api_key and settings.google_vision_api_key.strip():
-        keys["vision"] = settings.google_vision_api_key.strip()
-    if settings.openai_api_key and settings.openai_api_key.strip():
-        keys["openai"] = settings.openai_api_key.strip()
-
-    if not keys:
-        return None, None
-
-    chosen_key = None
-    key_type = None
-
-    # 1. Prioritize OpenRouter key (starts with sk-or-v1-)
-    for name, key in keys.items():
-        if key.startswith("sk-or-v1-"):
-            chosen_key = key
-            key_type = "openrouter"
-            break
-
-    # 2. Then OpenAI key (starts with sk-)
-    if not chosen_key:
-        for name, key in keys.items():
-            if key.startswith("sk-") and not key.startswith("sk-or-v1-"):
-                chosen_key = key
-                key_type = "openai"
-                break
-
-    # 3. Then standard Google Gemini key (starts with AIzaSy)
-    if not chosen_key:
-        for name, key in keys.items():
-            if key.startswith("AIzaSy"):
-                chosen_key = key
-                key_type = "gemini"
-                break
-
-    # Fallback to the original priority order if no prefix matches
-    if not chosen_key:
-        fallback_order = ["gemini", "vision", "openai"]
-        for name in fallback_order:
-            if name in keys:
-                chosen_key = keys[name]
-                if chosen_key.startswith("sk-or-v1-"):
-                    key_type = "openrouter"
-                elif chosen_key.startswith("sk-"):
-                    key_type = "openai"
-                elif chosen_key.startswith("AIzaSy"):
-                    key_type = "gemini"
-                else:
-                    key_type = "gemini"  # assume gemini/google
-                break
-
-    if not chosen_key:
+    """Resolves official Google Gemini client and model using GEMINI_API_KEY."""
+    api_key = (settings.gemini_api_key or settings.google_vision_api_key or settings.openai_api_key or "").strip()
+    if not api_key:
         return None, None
 
     from openai import OpenAI
 
-    if key_type == "openrouter":
-        client = OpenAI(
-            api_key=chosen_key,
-            base_url="https://openrouter.ai/api/v1"
-        )
-        model = "openai/gpt-4o-mini"
-    elif key_type == "openai":
-        client = OpenAI(
-            api_key=chosen_key,
-        )
-        model = "gpt-4o-mini"
-    else:
-        client = OpenAI(
-            api_key=chosen_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-        )
-        model = "gemini-2.5-flash"
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
+    model = "gemini-2.5-flash"
 
     return client, model
 
