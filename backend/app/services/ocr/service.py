@@ -24,6 +24,30 @@ def _resize_image_for_fast_ocr(img_bgr: Any, max_dim: int = 1200) -> Any:
     return img_bgr
 
 
+def _extract_pdf_text_direct(path: Path) -> list[dict] | None:
+    """
+    Fast path: extract embedded text directly from a digital PDF using PyMuPDF.
+    Returns a list of {text, confidence, engine} dicts (one per page) if the PDF
+    has embedded text, otherwise returns None so the caller falls back to OCR.
+    """
+    try:
+        import fitz
+        doc = fitz.open(str(path))
+        pages = []
+        all_empty = True
+        for page in doc:
+            text = page.get_text("text").strip()
+            if text and len(text.split()) >= 5:
+                all_empty = False
+            pages.append({"text": text, "confidence": 0.99, "engine": "pdf_text"})
+        if all_empty:
+            return None  # Scanned PDF – fall through to image OCR
+        return pages
+    except Exception as exc:
+        logger.warning("Direct PDF text extraction failed (%s): %s", path, exc)
+        return None
+
+
 def _load_image(path: Path) -> Any:
     import numpy as np
     from PIL import Image
@@ -120,13 +144,24 @@ def ocr_file(file_path: str | Path, settings: Settings | None = None) -> dict[st
     if not path.exists():
         raise FileNotFoundError(str(path))
 
+    # Fast path: extract embedded text from digital PDFs (0ms, no OCR needed)
+    if path.suffix.lower() == ".pdf":
+        direct_pages = _extract_pdf_text_direct(path)
+        if direct_pages:
+            logger.info("PDF '%s': using fast digital text extraction (%d pages)", path.name, len(direct_pages))
+            for idx, p in enumerate(direct_pages, start=1):
+                p["page"] = idx
+            full_text = "\n\n".join(p["text"] for p in direct_pages if p.get("text"))
+            avg_conf = sum(p["confidence"] for p in direct_pages) / len(direct_pages)
+            return {"pages": direct_pages, "full_text": full_text, "avg_confidence": avg_conf}
+
+    # Slow path: rasterize + Tesseract OCR (for scanned PDFs / images)
     images = _load_image(path)
     if not isinstance(images, list):
         images = [images]
 
     pages: list[dict[str, Any]] = []
     for idx, image in enumerate(images, start=1):
-        use_fallback = False
         page_result = {"text": "", "confidence": 0.0, "engine": "tesseract"}
         try:
             page_result = _tesseract_page(image, settings)
@@ -135,6 +170,7 @@ def ocr_file(file_path: str | Path, settings: Settings | None = None) -> dict[st
 
         page_result["page"] = idx
         pages.append(page_result)
+
 
     full_text = "\n\n".join(p["text"] for p in pages if p.get("text"))
     avg_conf = (
