@@ -114,7 +114,7 @@ def get_llm_client_and_model(settings: Settings):
             api_key=chosen_key,
             base_url="https://openrouter.ai/api/v1"
         )
-        model = "google/gemini-flash-1.5"
+        model = "openai/gpt-4o-mini"
     elif key_type == "openai":
         client = OpenAI(
             api_key=chosen_key,
