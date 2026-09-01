@@ -104,7 +104,7 @@ def _google_vision_page(image_bgr: Any, settings: Settings) -> dict[str, Any]:
         f"https://vision.googleapis.com/v1/images:annotate"
         f"?key={settings.google_vision_api_key}"
     )
-    resp = httpx.post(url, json=payload, timeout=30.0)
+    resp = httpx.post(url, json=payload, timeout=3.0)
     resp.raise_for_status()
     result = resp.json()["responses"][0]
     if "error" in result:
@@ -130,21 +130,8 @@ def ocr_file(file_path: str | Path, settings: Settings | None = None) -> dict[st
         page_result = {"text": "", "confidence": 0.0, "engine": "tesseract"}
         try:
             page_result = _tesseract_page(image, settings)
-            text = page_result.get("text", "").strip()
-            if page_result["confidence"] < settings.ocr_confidence_fallback_threshold:
-                use_fallback = True
-            elif len(text.split()) < 8 and len(text) > 0:
-                use_fallback = True
         except Exception as exc:
             logger.warning("Tesseract failed on page %s: %s", idx, exc)
-            use_fallback = True
-
-        if use_fallback and settings.google_vision_api_key:
-            try:
-                page_result = _google_vision_page(image, settings)
-                page_result["fallback_used"] = True
-            except Exception as exc:
-                logger.warning("Vision fallback failed page %s: %s", idx, exc)
 
         page_result["page"] = idx
         pages.append(page_result)
