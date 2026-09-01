@@ -11,6 +11,19 @@ from app.core.config import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 
+def _resize_image_for_fast_ocr(img_bgr: Any, max_dim: int = 1200) -> Any:
+    import cv2
+    if img_bgr is None or not hasattr(img_bgr, "shape"):
+        return img_bgr
+    h, w = img_bgr.shape[:2]
+    if max(h, w) > max_dim:
+        scale = max_dim / float(max(h, w))
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        return cv2.resize(img_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    return img_bgr
+
+
 def _load_image(path: Path) -> Any:
     import numpy as np
     from PIL import Image
@@ -24,13 +37,13 @@ def _load_image(path: Path) -> Any:
             doc = fitz.open(str(path))
             pages = []
             for page in doc:
-                pix = page.get_pixmap(dpi=200)
+                pix = page.get_pixmap(dpi=120)
                 img_data = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
                 if pix.n == 4:
                     img_bgr = cv2.cvtColor(img_data, cv2.COLOR_RGBA2BGR)
                 else:
                     img_bgr = cv2.cvtColor(img_data, cv2.COLOR_RGB2BGR)
-                pages.append(img_bgr)
+                pages.append(_resize_image_for_fast_ocr(img_bgr))
             return pages
         except Exception as exc:
             logger.warning("PDF conversion with PyMuPDF failed (%s): %s", path, exc)
@@ -40,8 +53,9 @@ def _load_image(path: Path) -> Any:
     img = cv2.imread(str(path))
     if img is None:
         pil = Image.open(path).convert("RGB")
-        return np.array(pil)[:, :, ::-1]
-    return [img]
+        img_bgr = np.array(pil)[:, :, ::-1]
+        return [_resize_image_for_fast_ocr(img_bgr)]
+    return [_resize_image_for_fast_ocr(img)]
 
 
 def _tesseract_page(image_bgr: Any, settings: Settings) -> dict[str, Any]:
@@ -54,6 +68,7 @@ def _tesseract_page(image_bgr: Any, settings: Settings) -> dict[str, Any]:
         )
     from app.services.ocr.preprocess import preprocess_for_ocr
 
+    image_bgr = _resize_image_for_fast_ocr(image_bgr)
     processed = preprocess_for_ocr(image_bgr)
     data = pytesseract.image_to_data(processed, output_type=Output.DICT)
     confidences = [int(c) for c in data["conf"] if str(c).isdigit() and int(c) >= 0]
