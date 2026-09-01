@@ -61,7 +61,7 @@ def get_llm_client_and_model(settings: Settings):
         api_key=api_key,
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
     )
-    model = "gemini-2.5-flash"
+    model = "gemini-3.6-flash"
 
     return client, model
 
