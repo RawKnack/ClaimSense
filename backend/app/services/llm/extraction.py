@@ -136,12 +136,15 @@ def extract_from_ocr(
     documents: dict[str, Any] = {}
     all_confidence: dict[str, float] = {}
 
-    for doc_type, ocr_payload in ocr_by_type.items():
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _process_doc(item: tuple[str, dict[str, Any]]):
+        doc_type, ocr_payload = item
         if ocr_payload.get("error"):
-            continue
+            return doc_type, None
         text = ocr_payload.get("full_text") or ""
         if not text.strip():
-            continue
+            return doc_type, None
         try:
             if has_api_key:
                 parsed = _openai_extract(doc_type, text, settings)
@@ -150,7 +153,14 @@ def extract_from_ocr(
         except Exception as exc:
             logger.warning("Extraction failed for %s: %s", doc_type, exc)
             parsed = _heuristic_extract(doc_type, text)
+        return doc_type, parsed
 
+    with ThreadPoolExecutor(max_workers=max(1, len(ocr_by_type))) as executor:
+        extracted_results = list(executor.map(_process_doc, ocr_by_type.items()))
+
+    for doc_type, parsed in extracted_results:
+        if not parsed:
+            continue
         field_conf = parsed.pop("field_confidence", {}) or {}
         for key, val in field_conf.items():
             all_confidence[f"{doc_type}.{key}" if not key.startswith(doc_type) else key] = val
