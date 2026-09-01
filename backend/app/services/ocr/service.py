@@ -58,7 +58,15 @@ def _tesseract_page(image_bgr: Any, settings: Settings) -> dict[str, Any]:
     data = pytesseract.image_to_data(processed, output_type=Output.DICT)
     confidences = [int(c) for c in data["conf"] if str(c).isdigit() and int(c) >= 0]
     avg_conf = (sum(confidences) / len(confidences) / 100.0) if confidences else 0.0
-    text = pytesseract.image_to_string(processed).strip()
+    
+    words = []
+    for text_word, conf in zip(data.get("text", []), data.get("conf", [])):
+        if str(conf).isdigit() and int(conf) >= 0 and text_word and text_word.strip():
+            words.append(text_word.strip())
+    text = " ".join(words).strip()
+    if not text:
+        text = pytesseract.image_to_string(processed).strip()
+
     return {"text": text, "confidence": round(avg_conf, 3), "engine": "tesseract"}
 
 

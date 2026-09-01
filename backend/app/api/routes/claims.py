@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -155,6 +156,7 @@ async def submit_claim(
     prescription: Annotated[UploadFile | None, File()] = None,
     bill: Annotated[UploadFile | None, File()] = None,
     diagnostic_report: Annotated[UploadFile | None, File()] = None,
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_app_settings),
 ) -> ClaimCreateResponse:
@@ -227,8 +229,13 @@ async def submit_claim(
 
     db.commit()
     db.refresh(claim)
-    process_claim(str(claim.id))
-    db.refresh(claim)
+
+    if background_tasks is not None:
+        background_tasks.add_task(process_claim, str(claim.id))
+    else:
+        process_claim(str(claim.id))
+        db.refresh(claim)
+
     response_status = ClaimStatusEnum(claim.status.value)
 
     return ClaimCreateResponse(
