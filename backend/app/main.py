@@ -40,8 +40,8 @@ async def lifespan(app: FastAPI):
             if "policy_embeddings" in inspector.get_table_names():
                 columns = inspector.get_columns("policy_embeddings")
                 for col in columns:
-                    if col["name"] == "embedding" and "384" in str(col["type"]):
-                        logger.info("Found outdated 384-dimensional policy_embeddings table. Dropping for 768-dimensional model recreation...")
+                    if col["name"] == "embedding" and "768" in str(col["type"]):
+                        logger.info("Found outdated 768-dimensional policy_embeddings table. Dropping for 384-dimensional model recreation...")
                         with engine.begin() as conn:
                             conn.execute(text("DROP TABLE IF EXISTS policy_embeddings CASCADE"))
                         break
@@ -86,6 +86,21 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.get("/")
+    def root():
+        return {
+            "status": "ok",
+            "app": settings.app_name,
+            "version": "0.1.0",
+            "docs": "/docs",
+            "api_v1": settings.api_v1_prefix,
+        }
+
+    @app.head("/")
+    def root_head():
+        return None
+
     app.include_router(api_router, prefix=settings.api_v1_prefix)
     return app
 

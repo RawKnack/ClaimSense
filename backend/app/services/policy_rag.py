@@ -114,30 +114,90 @@ def seed_policy_embeddings(db: Session) -> None:
         logger.warning("Failed to seed policy embeddings: %s", exc)
 
 
-class GeminiEmbeddingModel:
-    def __init__(self, api_key: str):
-        self.api_key = api_key
+class HuggingFaceEmbeddingModel:
+    def __init__(self, api_key: str, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+        self.api_key = api_key.strip()
+        self.model_name = model_name
 
     def encode(self, text: str) -> list[float]:
         import httpx
-        key = self.api_key.strip()
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/embedding-001:embedContent?key={key}"
+        url = f"https://router.huggingface.co/hf-inference/models/{self.model_name}"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
         try:
-            logger.info("Calling Google Gemini Embedding API (embedding-001)...")
+            logger.info("Calling Hugging Face Inference API (%s)...", self.model_name)
             response = httpx.post(
                 url,
-                json={"content": {"parts": [{"text": text}]}},
-                timeout=15.0
+                headers=headers,
+                json={"inputs": [text]},
+                timeout=15.0,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, list) and len(data) > 0:
+                    if isinstance(data[0], list):
+                        return data[0]
+                    return data
+            logger.warning(
+                "Hugging Face Inference API returned status %d: %s",
+                response.status_code,
+                response.text[:200],
+            )
+        except Exception as exc:
+            logger.warning("Hugging Face Inference API call failed: %s", exc)
+
+        raise RuntimeError("Failed to generate embedding via Hugging Face API")
+
+
+class GeminiEmbeddingModel:
+    def __init__(self, api_key: str):
+        self.api_key = api_key.strip()
+
+    def encode(self, text: str) -> list[float]:
+        import httpx
+        key = self.api_key
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={key}"
+        try:
+            logger.info("Calling Google Gemini Embedding API (gemini-embedding-001, 384d)...")
+            response = httpx.post(
+                url,
+                json={
+                    "content": {"parts": [{"text": text}]},
+                    "outputDimensionality": 384,
+                },
+                timeout=15.0,
             )
             if response.status_code == 200:
                 data = response.json()
                 if "embedding" in data and "values" in data["embedding"]:
                     return data["embedding"]["values"]
-            logger.warning("Gemini Embedding API returned status %d: %s", response.status_code, response.text)
+            logger.warning("Gemini Embedding API returned status %d: %s", response.status_code, response.text[:200])
         except Exception as exc:
             logger.warning("Gemini Embedding API call failed: %s", exc)
-        
+
         raise RuntimeError("Failed to generate embedding via Gemini API")
+
+
+class ResilientEmbeddingModel:
+    """Tries HuggingFace API first; seamlessly falls back to Gemini if credits/rate limits fail."""
+    def __init__(self, primary, fallback=None):
+        self.primary = primary
+        self.fallback = fallback
+
+    def encode(self, text: str) -> list[float]:
+        if self.primary is not None:
+            try:
+                return self.primary.encode(text)
+            except Exception as exc:
+                if self.fallback is not None:
+                    logger.warning("Primary embedding model failed (%s). Falling back to secondary...", exc)
+                    return self.fallback.encode(text)
+                raise
+        if self.fallback is not None:
+            return self.fallback.encode(text)
+        raise RuntimeError("No embedding provider available.")
 
 
 @lru_cache
@@ -146,19 +206,49 @@ def get_embedding_model():
     mode = os.environ.get("EMBEDDING_MODE", "unified").lower()
     sys.stderr.write(f"--- get_embedding_model: mode={mode} ---\n")
     sys.stderr.flush()
-    
+
     settings = get_settings()
-    api_key = settings.gemini_api_key or settings.google_vision_api_key or settings.openai_api_key
-    if api_key and api_key.strip():
-        sys.stderr.write("--- Using GeminiEmbeddingModel ---\n")
+    hf_key = (
+        settings.huggingface_api_key
+        or settings.hf_token
+        or os.environ.get("HUGGINGFACE_API_KEY")
+        or os.environ.get("HF_TOKEN")
+        or ""
+    ).strip()
+
+    gemini_key = (
+        settings.gemini_api_key
+        or settings.google_vision_api_key
+        or settings.openai_api_key
+        or os.environ.get("GEMINI_API_KEY")
+        or ""
+    ).strip()
+
+    hf_model = HuggingFaceEmbeddingModel(hf_key) if hf_key else None
+    gemini_model = GeminiEmbeddingModel(gemini_key) if gemini_key else None
+
+    if hf_model and gemini_model:
+        sys.stderr.write("--- Using ResilientEmbeddingModel (HuggingFace + Gemini fallback) ---\n")
         sys.stderr.flush()
-        return GeminiEmbeddingModel(api_key.strip())
-    
-    sys.stderr.write("--- Loading SentenceTransformer locally (all-mpnet-base-v2, 768 dimensions) ---\n")
+        return ResilientEmbeddingModel(primary=hf_model, fallback=gemini_model)
+    elif hf_model:
+        sys.stderr.write("--- Using HuggingFaceEmbeddingModel ---\n")
+        sys.stderr.flush()
+        return hf_model
+    elif gemini_model:
+        sys.stderr.write("--- Using GeminiEmbeddingModel (384d) ---\n")
+        sys.stderr.flush()
+        return gemini_model
+
+    sys.stderr.write("--- Loading SentenceTransformer locally (all-MiniLM-L6-v2, 384 dimensions) ---\n")
     sys.stderr.flush()
-    from sentence_transformers import SentenceTransformer
-    logger.info("Loading SentenceTransformer('all-mpnet-base-v2') locally...")
-    return SentenceTransformer("all-mpnet-base-v2")
+    try:
+        from sentence_transformers import SentenceTransformer
+        logger.info("Loading SentenceTransformer('all-MiniLM-L6-v2') locally...")
+        return SentenceTransformer("all-MiniLM-L6-v2")
+    except Exception as exc:
+        logger.warning("SentenceTransformer local load failed: %s", exc)
+        raise RuntimeError("No embedding model could be initialized.")
 
 
 def retrieve_policy_context(
