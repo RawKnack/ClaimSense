@@ -37,8 +37,6 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     google_vision_api_key: str | None = None
     gemini_api_key: str | None = None
-    huggingface_api_key: str | None = None
-    hf_token: str | None = None
     ocr_confidence_fallback_threshold: float = 0.60
     llm_reasoning_confidence_threshold: float = 0.70
 

@@ -40,8 +40,8 @@ async def lifespan(app: FastAPI):
             if "policy_embeddings" in inspector.get_table_names():
                 columns = inspector.get_columns("policy_embeddings")
                 for col in columns:
-                    if col["name"] == "embedding" and "768" in str(col["type"]):
-                        logger.info("Found outdated 768-dimensional policy_embeddings table. Dropping for 384-dimensional model recreation...")
+                    if col["name"] == "embedding" and "384" in str(col["type"]):
+                        logger.info("Found outdated 384-dimensional policy_embeddings table. Dropping for 768-dimensional model recreation...")
                         with engine.begin() as conn:
                             conn.execute(text("DROP TABLE IF EXISTS policy_embeddings CASCADE"))
                         break
